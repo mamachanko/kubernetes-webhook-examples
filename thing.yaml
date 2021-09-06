@@ -1,0 +1,4 @@
+apiVersion: mamachanko.com/v1alpha1
+kind: Thing
+metadata:
+  name: test

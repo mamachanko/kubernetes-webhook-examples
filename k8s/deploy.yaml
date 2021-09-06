@@ -1,0 +1,243 @@
+---
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  name: things.mamachanko.com
+spec:
+  group: mamachanko.com
+  scope: Namespaced
+  preserveUnknownFields: false
+  versions:
+    - name: v1alpha1
+      served: true
+      storage: true
+      schema:
+        openAPIV3Schema:
+          type: object
+          properties:
+            spec:
+              type: object
+  names:
+    kind: Thing
+    singular: thing
+    plural: things
+    shortNames:
+      - t
+      - ts
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: webhook-examples
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: webhook-example-go
+  namespace: webhook-examples
+spec:
+  type: NodePort
+  ports:
+    - port: 80
+      targetPort: app-port
+      protocol: TCP
+      name: http-port
+    - port: 443
+      targetPort: app-port
+      protocol: TCP
+      name: https-port
+  selector:
+    name: webhook-example-go
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  labels:
+    name: webhook-example-go
+  name: webhook-example-go
+  namespace: webhook-examples
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      name: webhook-example-go
+  template:
+    metadata:
+      labels:
+        name: webhook-example-go
+    spec:
+      volumes:
+        - name: certs
+          secret:
+            secretName: webhook-example-go
+      containers:
+      - image: mamachanko/webhook-example-go
+        name: webhook-example-go
+        volumeMounts:
+          - mountPath: /certs
+            readOnly: true
+            name: certs
+        args:
+          - --tls-cert-file
+          - /certs/tls.crt
+          - --tls-private-key-file
+          - /certs/tls.key
+          - -alsologtostderr
+          - 2>&1
+        ports:
+          - name: app-port
+            containerPort: 8080
+            protocol: TCP
+        livenessProbe:
+          httpGet:
+            path: /health/liveness
+            port: app-port
+            scheme: HTTPS
+          failureThreshold: 24
+          initialDelaySeconds: 10
+          periodSeconds: 5
+        readinessProbe:
+          httpGet:
+            path: /health/readiness
+            port: app-port
+            scheme: HTTPS
+          failureThreshold: 24
+          initialDelaySeconds: 5
+          periodSeconds: 5
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: webhook-example-java
+  namespace: webhook-examples
+spec:
+  type: NodePort
+  ports:
+    - port: 80
+      targetPort: app-port
+      protocol: TCP
+      name: http-port
+    - port: 443
+      targetPort: app-port
+      protocol: TCP
+      name: https-port
+  selector:
+    name: webhook-example-java
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  labels:
+    name: webhook-example-java
+  name: webhook-example-java
+  namespace: webhook-examples
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      name: webhook-example-java
+  template:
+    metadata:
+      labels:
+        name: webhook-example-java
+    spec:
+      volumes:
+        - name: certs
+          secret:
+            secretName: webhook-example-java
+            items:
+              - key: keystore.p12
+                path: keystore.p12
+      containers:
+      - image: mamachanko/webhook-example-java
+        name: webhook-example-go
+        env:
+          - name: SERVER_SSL_ENABLED
+            value: "true"
+          - name: SERVER_SSL_KEY_STORE_TYPE
+            value: "PKCS12"
+          - name: SERVER_SSL_KEY_STORE
+            value: "/certs/keystore.p12"
+          - name: SERVER_SSL_KEY_STORE_PASSWORD
+            valueFrom:
+              secretKeyRef:
+                name: webhook-example-java
+                key: keystorePassword
+        volumeMounts:
+          - mountPath: /certs
+            readOnly: true
+            name: certs
+        ports:
+          - name: app-port
+            containerPort: 8080
+            protocol: TCP
+        livenessProbe:
+          httpGet:
+            path: /actuator/health
+            port: app-port
+            scheme: HTTPS
+          failureThreshold: 24
+          initialDelaySeconds: 10
+          periodSeconds: 5
+        readinessProbe:
+          httpGet:
+            path: /actuator/health
+            port: app-port
+            scheme: HTTPS
+          failureThreshold: 24
+          initialDelaySeconds: 5
+          periodSeconds: 5
+---
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingWebhookConfiguration
+metadata:
+  name: webhook-example-go
+  namespace: webhook-examples
+webhooks:
+  - admissionReviewVersions:
+      - v1beta1
+    clientConfig:
+      service:
+        name: webhook-example-go
+        namespace: webhook-examples
+        path: /webhooks/admission/allow-all
+    name: allow-all.mamachanko.com
+    sideEffects: None
+    rules:
+      - resources:
+          - things
+        apiVersions:
+          - v1alpha1
+        apiGroups:
+          - mamachanko.com
+        operations:
+          - CREATE
+          - UPDATE
+          - DELETE
+---
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingWebhookConfiguration
+metadata:
+  name: webhook-example-java
+  namespace: webhook-examples
+webhooks:
+  - admissionReviewVersions:
+      - v1beta1
+    clientConfig:
+      service:
+        name: webhook-example-java
+        namespace: webhook-examples
+        path: /webhooks/admission/allow-all
+    name: allow-all.mamachanko.com
+    sideEffects: None
+    rules:
+      - resources:
+          - things
+        apiVersions:
+          - v1alpha1
+        apiGroups:
+          - mamachanko.com
+        operations:
+          - CREATE
+          - UPDATE
+          - DELETE

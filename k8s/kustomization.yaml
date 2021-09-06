@@ -1,0 +1,47 @@
+---
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+namespace: webhook-examples
+
+resources:
+  - deploy.yaml
+
+secretGenerator:
+  - name: webhook-example-go
+    files:
+      - tls.crt=certs/webhook-example-go/tls.crt
+      - tls.key=certs/webhook-example-go/tls.key
+      - cabundle.pem=certs/webhook-example-go/cabundle.pem
+  - name: webhook-example-java
+    literals:
+      - keystorePassword=verysecret
+    files:
+      - cabundle.pem=certs/webhook-example-java/cabundle.pem
+      - keystore.p12=certs/webhook-example-java/keystore.p12
+
+replacements:
+  - source:
+      kind: Secret
+      name: webhook-example-go
+      fieldPath: data.[cabundle.pem]
+    targets:
+      - select:
+          kind: ValidatingWebhookConfiguration
+          name: webhook-example-go
+        fieldPaths:
+          - webhooks.[name=allow-all.mamachanko.com].clientConfig.caBundle
+        options:
+          create: true
+  - source:
+      kind: Secret
+      name: webhook-example-java
+      fieldPath: data.[cabundle.pem]
+    targets:
+      - select:
+          kind: ValidatingWebhookConfiguration
+          name: webhook-example-java
+        fieldPaths:
+          - webhooks.[name=allow-all.mamachanko.com].clientConfig.caBundle
+        options:
+          create: true

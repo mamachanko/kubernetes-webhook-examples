@@ -1,0 +1,27 @@
+apiVersion: skaffold/v2beta21
+kind: Config
+metadata:
+  name: kubernetes-webhook-examples
+build:
+  local:
+    concurrency: 2
+  artifacts:
+    - image: mamachanko/webhook-example-go
+      context: webhook-example-go
+    - image: mamachanko/webhook-example-java
+      context: webhook-example-java
+      jib: {}
+deploy:
+  kustomize:
+    paths:
+      - k8s
+profiles:
+  - name: local-kind
+    activation:
+      - kubeContext: kind
+    build:
+      tagPolicy:
+        envTemplate:
+          template: "{{.USER}}"
+      local:
+        push: false
